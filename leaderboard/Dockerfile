@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1
+
+FROM golang:1.25.3 AS build
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# build the binary
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /api ./cmd/api
+
+# --- runtime stage ---
+FROM gcr.io/distroless/base-debian12
+
+COPY --from=build /api /api
+
+EXPOSE 8080
+
+USER nonroot:nonroot
+ENTRYPOINT ["/api"]

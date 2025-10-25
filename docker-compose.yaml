@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: lb-postgres
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      # run migrations on first boot
+      - ./leaderboard/db/migrations:/docker-entrypoint-initdb.d
+      # persist data across restarts
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 1s
+      timeout: 5s
+      retries: 10  
+
+  api:
+    build: ./leaderboard
+    container_name: lb-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # IMPORTANT: talk to postgres by service name "postgres" container name, not localhost
+      PG_URI: postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
