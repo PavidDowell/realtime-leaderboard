@@ -11,16 +11,21 @@ import (
 type Server struct {
 	httpServer *http.Server
 	DB         *db.Postgres
+	Redis      *db.Redis
 }
 
-func NewServer(addr string, database *db.Postgres) *Server {
+func NewServer(addr string, database *db.Postgres, cache *db.Redis) *Server {
 	mux := http.NewServeMux()
 
 	// Attach routes to server
-	h := &Handlers{DB: database}
-	mux.HandleFunc("GET /healthz", h.healthz)
-	mux.HandleFunc("GET /players", h.ListPlayers)
-	mux.HandleFunc("POST /score", h.postScore)
+	handler := &Handlers{
+		DB:    database,
+		Redis: cache,
+	}
+	mux.HandleFunc("GET /healthz", handler.healthz)
+	mux.HandleFunc("GET /players", handler.ListPlayers)
+	mux.HandleFunc("POST /score", handler.postScore)
+	mux.HandleFunc("GET /leaderboard", handler.getLeaderboard)
 
 	s := &http.Server{
 		Addr:              addr,
@@ -31,6 +36,7 @@ func NewServer(addr string, database *db.Postgres) *Server {
 	return &Server{
 		httpServer: s,
 		DB:         database,
+		Redis:      cache,
 	}
 }
 

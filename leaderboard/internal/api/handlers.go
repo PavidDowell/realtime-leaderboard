@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"leaderboard/internal/db"
 	"net/http"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type Handlers struct {
-	DB *db.Postgres
+	DB    *db.Postgres
+	Redis *db.Redis
 }
 
 // Health check -> 200 so you know service is alive
@@ -95,7 +98,7 @@ func (handler *Handlers) postScore(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
-	// 1. Ensure the player exists (upsert by username)
+	// Ensure the player exists (upsert by username)
 	var playerID string
 	err = tx.QueryRow(ctx, `
 		INSERT INTO players(username)
@@ -108,7 +111,7 @@ func (handler *Handlers) postScore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Insert a score event (idempotent via idempotency_key)
+	// Insert a score event (idempotent via idempotency_key)
 	// If the same idempotencyKey is sent twice, ON CONFLICT DO NOTHING
 	_, err = tx.Exec(ctx, `
 		INSERT INTO score_events(player_id, delta, source, idempotency_key)
@@ -120,13 +123,13 @@ func (handler *Handlers) postScore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Commit transaction so trigger runs and player_scores is updated
+	// Commit transaction so trigger runs and player_scores is updated
 	if err := tx.Commit(ctx); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// 4. Fetch the player's latest total score from player_scores
+	// Fetch the player's latest total score from player_scores
 	var total int64
 	err = handler.DB.Pool.QueryRow(ctx, `
 		SELECT score
@@ -138,6 +141,18 @@ func (handler *Handlers) postScore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if handler.Redis != nil && handler.Redis.Client != nil {
+		redisErr := handler.Redis.Client.ZAdd(ctx, "leaderboard:global",
+			redis.Z{
+				Score:  float64(total),
+				Member: req.Username,
+			},
+		).Err()
+		if redisErr != nil {
+			// log it if you want
+		}
+	}
+
 	type scoreResp struct {
 		Username string `json:"username"`
 		Score    int64  `json:"score"`
@@ -146,4 +161,39 @@ func (handler *Handlers) postScore(w http.ResponseWriter, r *http.Request) {
 		Username: req.Username,
 		Score:    total,
 	})
+}
+
+// GET /leaderboard?limit=10
+func (handler *Handlers) getLeaderboard(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	limit := 10
+	if handler.Redis == nil || handler.Redis.Client == nil {
+		http.Error(w, "redis not available", http.StatusInternalServerError)
+		return
+	}
+
+	results, err := handler.Redis.Client.ZRevRangeWithScores(ctx, "leaderboard:global", 0, int64(limit-1)).Result()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type row struct {
+		Rank     int    `json:"rank"`
+		Username string `json:"username"`
+		Score    int64  `json:"score"`
+	}
+	out := make([]row, 0, len(results))
+
+	for i, z := range results {
+		username, _ := z.Member.(string)
+		out = append(out, row{
+			Rank:     i + 1,
+			Username: username,
+			Score:    int64(z.Score),
+		})
+	}
+
+	writeJSON(ctx, w, out)
 }

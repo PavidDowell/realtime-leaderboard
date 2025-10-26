@@ -15,7 +15,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// 1. connect to Postgres
+	// connect to Postgres
 	pg, err := db.New(ctx)
 	if err != nil {
 		log.Fatalf("db connect failed: %v", err)
@@ -23,17 +23,24 @@ func main() {
 	defer pg.Close()
 	log.Println("connected to postgres")
 
-	// 2. create HTTP server
-	addr := ":" + getEnv("PORT", "8080")
-	srv := myapi.NewServer(addr, pg)
+	// connect to Redis
+	rd, err := db.NewRedis(ctx)
+	if err != nil {
+		log.Fatalf("redis connect failed: %v", err)
+	}
+	defer rd.Close()
+	log.Println("connected to redis")
 
-	// 3. run server in a goroutine so we can capture Ctrl+C
+	// create HTTP server
+	addr := ":" + getEnv("PORT", "8080")
+	srv := myapi.NewServer(addr, pg, rd)
+
+	//run server in a goroutine so we can capture Ctrl+C
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- srv.Start()
 	}()
 
-	// 4. wait for either server error or interrupt
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 
@@ -44,14 +51,14 @@ func main() {
 		log.Printf("server error: %v", err)
 	}
 
-	// 5. graceful shutdown
+	// this is how you do a graceful shutdown with go
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("graceful shutdown error: %v", err)
 	}
 
-	log.Println("bye")
+	log.Println("api shutdown gracefully")
 }
 
 func getEnv(value, def string) string {

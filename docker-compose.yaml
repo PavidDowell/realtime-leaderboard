@@ -18,6 +18,19 @@ services:
       interval: 1s
       timeout: 5s
       retries: 10  
+  
+  redis:
+    image: redis:7
+    container_name: lb-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 1s
+      timeout: 5s
+      retries: 10
+
 
   api:
     build: ./leaderboard
@@ -25,9 +38,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       # IMPORTANT: talk to postgres by service name "postgres" container name, not localhost
       PG_URI: postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      REDIS_ADDR: redis:6379
       PORT: "8080"
     ports:
       - "8080:8080"
