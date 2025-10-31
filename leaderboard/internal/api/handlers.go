@@ -12,6 +12,7 @@ import (
 type Handlers struct {
 	DB    *db.Postgres
 	Redis *db.Redis
+	Hub   *Hub
 }
 
 // Health check -> 200 so you know service is alive
@@ -151,6 +152,13 @@ func (handler *Handlers) postScore(w http.ResponseWriter, r *http.Request) {
 		if redisErr != nil {
 			// log it if you want
 		}
+	}
+
+	if handler.Hub != nil {
+		handler.Hub.Broadcast(LeaderboardUpdate{
+			Username: req.Username,
+			Score:    total,
+		})
 	}
 
 	type scoreResp struct {

@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+  <body>
+    <h1>Live leaderboard feed</h1>
+    <pre id="log"></pre>
+
+    <script>
+      const logEl = document.getElementById('log');
+
+      function log(msg) {
+        logEl.textContent += msg + "\n";
+      }
+
+      // Connect to your API's websocket
+      const ws = new WebSocket("ws://localhost:8081/ws");
+
+      ws.onopen = () => {
+        log("✅ connected to /ws");
+      };
+
+      ws.onmessage = (evt) => {
+        log("📢 update: " + evt.data);
+      };
+
+      ws.onclose = () => {
+        log("❌ disconnected");
+      };
+    </script>
+  </body>
+</html>

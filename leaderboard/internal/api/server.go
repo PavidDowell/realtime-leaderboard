@@ -12,20 +12,23 @@ type Server struct {
 	httpServer *http.Server
 	DB         *db.Postgres
 	Redis      *db.Redis
+	Hub        *Hub
 }
 
-func NewServer(addr string, database *db.Postgres, cache *db.Redis) *Server {
+func NewServer(addr string, database *db.Postgres, cache *db.Redis, hub *Hub) *Server {
 	mux := http.NewServeMux()
 
 	// Attach routes to server
 	handler := &Handlers{
 		DB:    database,
 		Redis: cache,
+		Hub:   hub,
 	}
 	mux.HandleFunc("GET /healthz", handler.healthz)
 	mux.HandleFunc("GET /players", handler.ListPlayers)
 	mux.HandleFunc("POST /score", handler.postScore)
 	mux.HandleFunc("GET /leaderboard", handler.getLeaderboard)
+	mux.HandleFunc("GET /ws", handler.WSHandler)
 
 	s := &http.Server{
 		Addr:              addr,
@@ -37,6 +40,7 @@ func NewServer(addr string, database *db.Postgres, cache *db.Redis) *Server {
 		httpServer: s,
 		DB:         database,
 		Redis:      cache,
+		Hub:        hub,
 	}
 }
 

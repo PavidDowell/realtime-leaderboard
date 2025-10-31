@@ -31,9 +31,13 @@ func main() {
 	defer rd.Close()
 	log.Println("connected to redis")
 
+	// create websocket hub
+	hub := myapi.NewHub()
+	go hub.Run() // start broadcast
+
 	// create HTTP server
 	addr := ":" + getEnv("PORT", "8080")
-	srv := myapi.NewServer(addr, pg, rd)
+	srv := myapi.NewServer(addr, pg, rd, hub)
 
 	//run server in a goroutine so we can capture Ctrl+C
 	errCh := make(chan error, 1)
