@@ -1,5 +1,5 @@
 # realtime-leaderboard
-This is an example project to make a service realtime by using a comination of, postgres, go, redis 
+This is an example project to make a service realtime by using a combination of, postgres, go, redis 
 and a reverse proxy with nginx.
 
 
